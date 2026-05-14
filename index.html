@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Облік робочого часу</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f0f4f8;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 36px 28px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+  }
+
+  .logo {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: #1F3864;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    font-size: 28px;
+  }
+
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1a1a2e;
+    margin-bottom: 6px;
+  }
+
+  .subtitle {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 28px;
+  }
+
+  .status-box {
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 24px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .status-box.loading {
+    background: #EFF6FF;
+    color: #1d4ed8;
+    border: 1px solid #BFDBFE;
+  }
+
+  .status-box.success {
+    background: #F0FDF4;
+    color: #166534;
+    border: 1px solid #BBF7D0;
+  }
+
+  .status-box.error {
+    background: #FFF1F2;
+    color: #9f1239;
+    border: 1px solid #FECDD3;
+  }
+
+  .status-box.warning {
+    background: #FFFBEB;
+    color: #92400e;
+    border: 1px solid #FDE68A;
+  }
+
+  .coords {
+    font-size: 11px;
+    color: #888;
+    margin-top: 6px;
+    font-family: monospace;
+  }
+
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    border-radius: 10px;
+    border: none;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity 0.2s;
+  }
+
+  .btn:hover { opacity: 0.88; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-primary {
+    background: #1F3864;
+    color: #fff;
+    margin-bottom: 10px;
+  }
+
+  .btn-secondary {
+    background: #F1F5F9;
+    color: #334155;
+    font-size: 14px;
+    padding: 11px;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 2px solid #93C5FD;
+    border-top-color: #1d4ed8;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .footer {
+    margin-top: 24px;
+    font-size: 12px;
+    color: #aaa;
+  }
+
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo">📍</div>
+  <h1>Відмітка присутності</h1>
+  <p class="subtitle">Визначаємо ваше місцезнаходження</p>
+
+  <div class="status-box loading" id="status-box">
+    <span class="spinner" id="spinner"></span>
+    <span id="status-text">Запит на геолокацію...</span>
+    <div class="coords hidden" id="coords-display"></div>
+  </div>
+
+  <button class="btn btn-primary" id="btn-form" disabled onclick="openForm()">
+    Відкрити форму відмітки
+  </button>
+
+  <button class="btn btn-secondary hidden" id="btn-skip" onclick="skipGeo()">
+    Продовжити без геолокації
+  </button>
+
+  <div class="footer">
+    Геолокація потрібна для підтвердження<br>присутності на робочому місці
+  </div>
+</div>
+
+<script>
+  // ╔══════════════════════════════════════════════════════╗
+  // ║  ЗАПОВНІТЬ 3 ЗНАЧЕННЯ НИЖЧЕ — РЕШТА ГОТОВА         ║
+  // ║  Шукайте коментарі "ТУТ ВСТАВТЕ"                   ║
+  // ╚══════════════════════════════════════════════════════╝
+
+  // ═══════════════════════════════════════════════════
+  // НАЛАШТУВАННЯ — замініть на свої значення
+  // ═══════════════════════════════════════════════════
+
+  const FORM_URL = "https://docs.google.com/forms/d/e/XXXXXXXXXX/viewform";
+  // ТУТ ВСТАВТЕ посилання на вашу Google Form
+  // Де знайти: Google Form → кнопка "Надіслати" → іконка посилання → скопіюйте URL
+
+  const OFFICE_LAT  = 50.4501;   // ТУТ ВСТАВТЕ широту офісу
+  const OFFICE_LNG  = 30.5234;   // ТУТ ВСТАВТЕ довготу офісу
+  // Як знайти: Google Maps → правий клік на будівлі офісу → "Копіювати координати"
+  const RADIUS_M    = 300;        // Радіус в метрах (збільшіть до 500 якщо GPS плаває)
+
+  // Поля у вашій Google Form (entry.XXXXXXXXX — знайдіть через "Попередній перегляд" форми)
+  // Щоб знайти entry ID: відкрийте форму → правий клік → "Переглянути код сторінки" → шукайте "entry."
+  const FIELD_GEO   = "entry.111111111";  // ТУТ ВСТАВТЕ ID поля Геолокація
+  // Як знайти: відкрийте попередній перегляд форми → правий клік → "Переглянути код" → шукайте "Геолокація" → поруч entry.XXXXXXXXX
+  // ═══════════════════════════════════════════════════
+
+  let geoData = null;
+  let geoStatus = "pending"; // pending | ok | far | denied | error
+
+  function toRad(deg) { return deg * Math.PI / 180; }
+
+  function distanceMeters(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  function setStatus(type, html, coords) {
+    const box = document.getElementById("status-box");
+    box.className = "status-box " + type;
+    document.getElementById("spinner").classList.toggle("hidden", type !== "loading");
+    document.getElementById("status-text").innerHTML = html;
+    const cd = document.getElementById("coords-display");
+    if (coords) {
+      cd.textContent = coords;
+      cd.classList.remove("hidden");
+    } else {
+      cd.classList.add("hidden");
+    }
+  }
+
+  function enableButton() {
+    const btn = document.getElementById("btn-form");
+    btn.disabled = false;
+  }
+
+  function showSkipButton() {
+    document.getElementById("btn-skip").classList.remove("hidden");
+  }
+
+  function openForm() {
+    let url = FORM_URL;
+    if (geoData) {
+      const val = encodeURIComponent(
+        `${geoData.lat.toFixed(6)},${geoData.lng.toFixed(6)} ` +
+        `(±${Math.round(geoData.acc)}м, ${geoData.dist ? geoData.dist+"м від офісу" : "відстань невідома"})`
+      );
+      url += (url.includes("?") ? "&" : "?") + FIELD_GEO + "=" + val;
+    } else {
+      const val = encodeURIComponent("геолокація не надана");
+      url += (url.includes("?") ? "&" : "?") + FIELD_GEO + "=" + val;
+    }
+    window.location.href = url;
+  }
+
+  function skipGeo() {
+    geoData = null;
+    openForm();
+  }
+
+  // Request geolocation on load
+  if (!navigator.geolocation) {
+    setStatus("error", "Ваш браузер не підтримує геолокацію");
+    showSkipButton();
+  } else {
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const acc = pos.coords.accuracy;
+        const dist = Math.round(distanceMeters(lat, lng, OFFICE_LAT, OFFICE_LNG));
+
+        geoData = { lat, lng, acc, dist };
+
+        if (dist <= RADIUS_M) {
+          geoStatus = "ok";
+          setStatus(
+            "success",
+            "Ви в офісі. Можна відмічатись.",
+            `${lat.toFixed(5)}, ${lng.toFixed(5)} · ${dist}м від офісу · точність ±${Math.round(acc)}м`
+          );
+          enableButton();
+        } else {
+          geoStatus = "far";
+          setStatus(
+            "warning",
+            `Ви за межами офісу (${dist}м). Відмітка буде позначена як підозріла.`,
+            `${lat.toFixed(5)}, ${lng.toFixed(5)} · ${dist}м від офісу · точність ±${Math.round(acc)}м`
+          );
+          enableButton();
+        }
+      },
+      function(err) {
+        geoStatus = "denied";
+        const msgs = {
+          1: "Ви відхилили доступ до геолокації. Відмітка буде позначена як без локації.",
+          2: "Не вдалося визначити місцезнаходження.",
+          3: "Час очікування вичерпано."
+        };
+        setStatus("error", msgs[err.code] || "Помилка геолокації.");
+        showSkipButton();
+        enableButton();
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+</script>
+
+</body>
+</html>
